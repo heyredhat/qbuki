@@ -50,7 +50,7 @@ def rand_unitary(d, field="complex"):
     elif field == "real":
         return ortho_group.rvs(d)
 
-def rand_povm(d, n=None, r=1, field="complex"):
+def rand_povm(d, n=None, r=None, field="complex"):
     r"""
     Generates a Haar distributed random POVM for a Hilbert space of dimension $d$, 
     with $n$ elements, and with rank $m$.
@@ -60,7 +60,7 @@ def rand_povm(d, n=None, r=1, field="complex"):
     $n$ defaults to $d^2$ if complex, $\frac{d(d+1)}{2}$ if real.
     """
     n = n if type(n) != type(None) else state_space_dimension(d, field)
-
+    r = r if type(r) != type(None) else d
     if field == "complex":
         povm = np.zeros((n, d, d), dtype=np.complex128) 
         S = np.zeros(d, dtype=np.complex128) 

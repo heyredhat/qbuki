@@ -160,3 +160,48 @@ def implement_povm(E):
 
 def complete_povm(E):
     return np.array(E/len(E) + [np.eye(E[0].shape[0]) - sum(E)/len(E)])
+
+def trace1(E):
+    return np.array([e/e.trace() for e in E])
+
+def dilate_povm(E):
+    EE = []
+    mapping = {}
+    for i, e in enumerate(E):
+        L, V = np.linalg.eig(e)
+        mapping[i] = []
+        for j in range(len(L)):
+            if not np.isclose(L[j], 0):
+                EE.append(L[j]*np.outer(V[j], V[j].conj()))
+                mapping[i].append(len(EE)-1)
+    return np.array(EE)
+
+def coarse_grain_povm(E, mapping):
+    return np.array([sum([self[v] for v in V]) for k, V in mapping.items()])
+
+def stereographic_projection(X, pole=None):
+    if type(pole) == type(None):
+        pole = np.eye(len(X))[0]
+    if np.isclose(X@pole, 1):
+        return np.inf
+    return (pole + (X - pole)/(1-X@pole))[:-1]
+
+def reverse_stereographic_projection(X, pole=None):
+    if type(X) != np.ndarray and X == np.inf:
+        return pole
+    if type(pole) == type(None):
+        pole = np.eye(len(X)+1)[0]
+    X = np.append(X, 0)
+    return ((np.linalg.norm(X)**2 - 1)/(np.linalg.norm(X)**2 +1))*pole + (2/(np.linalg.norm(X)**2 +1))*x
+
+def pnorm(A, p=2):
+    S = np.linalg.svd(A, compute_uv=False)
+    return np.sum(S**p)**(1/p) if p != np.inf else np.max(S)
+
+
+def sample_from_povm(E, rho, n=1):
+    return np.random.choice(list(range(len(E))), size=n, p=np.squeeze((E << rho).real))
+
+def quantumness(A, B, p=2):
+    S = np.linalg.svd(np.eye(len(A)) - (~A|B), compute_uv=False)
+    return np.sum(S**p)**(1/p) if p != np.inf else np.max(S)
