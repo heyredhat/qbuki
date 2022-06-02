@@ -1,15 +1,15 @@
     @partial(jax.jit, static_argnums=(1,2,3))
-    def jit_quantumness(P, n, m, p):
+    def jit_quantumness(P, n, d, p):
         a, A, B = [1], [P], []
         for i in range(1, n+1):
             a.append(A[-1].trace()/i)
             B.append(A[-1] - a[-1]*jp.eye(n))
             A.append(P @ B[-1])
-        j = n - m
+        j = n - d
         Phi = sum([((-1 if i == 0 else 1)*a[n-j-1]*a[i]/a[n-j]**2 + \
                      (i if i < 2 else -1)*a[i-1]/a[n-j])*\
                         jp.linalg.matrix_power(P, n-j-i)
-                            for i in range(m)])
+                            for i in range(d)])
         S = jp.linalg.svd(np.eye(n) - Phi, compute_uv=False)
         return jp.sum(S**p)**(1/p) if p != np.inf else jp.max(S)
 

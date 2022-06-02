@@ -2,6 +2,7 @@ import numpy as np
 import scipy as sc
 from scipy.spatial import ConvexHull
 from scipy.spatial import HalfspaceIntersection
+from functools import partial
 
 import jax
 import jax.numpy as jp
@@ -17,6 +18,42 @@ import matplotlib.colors as colors
 
 from .utils import *
 from .random import *
+
+def rand_probability_table(m, n, k):
+    P = np.random.uniform(low=0, high=1, size=(m, n))
+    
+    @jax.jit
+    def obj(V):
+        A = V[:m*k].reshape(m, k)
+        B = V[m*k:].reshape(k, n)
+        return jp.linalg.norm(A@B - P)
+
+    @jax.jit
+    def consistency_max(V):
+        A = V[:m*k].reshape(m, k)
+        B = V[m*k:].reshape(k, n)
+        return -(A@B).flatten() +1
+
+    V = np.random.randn(m*k + k*n)
+    result = sc.optimize.minimize(obj, V,\
+                                  jac=jax.jit(jax.jacrev(obj)),\
+                                  tol=1e-16,\
+                                  constraints=[{"type": "ineq",\
+                                                "fun": consistency_max,\
+                                                "jac": jax.jit(jax.jacrev(consistency_max))}],\
+                                  options={"maxiter": 5000},
+                                  method="SLSQP")
+    A = result.x[:m*k].reshape(m, k)
+    B = result.x[m*k:].reshape(k, n)
+    if not (np.all(A @ B >= 0) and np.all(A @ B <= 1)):
+        return rand_probability_table(m, n, k)
+    else:
+        return A @ B
+
+def rand_quantum_probability_table(d, m, n, field="complex", r=1):
+    effects = [np.eye(d)] + [rand_effect(d, r=r, field=field) for _ in range(m-1)]
+    states = [rand_dm(d, r=r, field=field) for _ in range(n)]
+    return np.array([[(e @ s).trace() for s in states] for e in effects]).real
 
 def rank_approximation(P, k, sd=1, tol=1e-6, max_iter=1000, verbose=False):
     m, n = P.shape
@@ -131,37 +168,37 @@ class GPT:
     
         self.d = self.states.shape[0]
 
-    def sample_measurement(self, n, max_iter=100):
+    def sample_measurement(self, m, max_iter=100):
         @jax.jit
         def unity(V):
-            M = V.reshape(n, self.d)
+            M = V.reshape(m, self.d)
             return jp.linalg.norm(jp.sum(M, axis=0) - self.unit_effect)**2
 
         @jax.jit
         def consistent_min(V):
-            M = V.reshape(n, self.d)
+            M = V.reshape(m, self.d)
             return (M @ self.states).flatten()
 
         @jax.jit
         def consistent_max(V):
-            M = V.reshape(n, self.d)
+            M = V.reshape(m, self.d)
             return -(M @ self.states).flatten() + 1
 
         i = 0
         while i < max_iter:
-            V = np.random.randn(n*self.d)
+            V = np.random.randn(m*self.d)
             result = sc.optimize.minimize(unity, V,\
                                 jac=jax.jit(jax.jacrev(unity)),\
                                 tol=1e-16,\
                                 constraints=[{"type": "ineq",\
-                                            "fun": consistent_min,\
-                                            "jac": jax.jit(jax.jacrev(consistent_min))},\
+                                             "fun": consistent_min,\
+                                             "jac": jax.jit(jax.jacrev(consistent_min))},\
                                             {"type": "ineq",\
-                                            "fun": consistent_max,\
-                                            "jac": jax.jit(jax.jacrev(consistent_max))}],\
+                                             "fun": consistent_max,\
+                                             "jac": jax.jit(jax.jacrev(consistent_max))}],\
                                 options={"maxiter": 5000},
                                 method="SLSQP")
-            M = result.x.reshape(n, self.d)
+            M = result.x.reshape(m, self.d)
             if self.valid_measurement(M):
                 return M
             i += 1
@@ -195,11 +232,11 @@ class GPT:
                                 jac=jax.jit(jax.jacrev(info_complete)),\
                                 tol=1e-16,\
                                 constraints=[{"type": "ineq",\
-                                            "fun": consistent_min,\
-                                            "jac": jax.jit(jax.jacrev(consistent_min))},\
+                                             "fun": consistent_min,\
+                                             "jac": jax.jit(jax.jacrev(consistent_min))},\
                                             {"type": "ineq",\
-                                            "fun": consistent_max,\
-                                            "jac": jax.jit(jax.jacrev(consistent_max))}],\
+                                             "fun": consistent_max,\
+                                             "jac": jax.jit(jax.jacrev(consistent_max))}],\
                                 options={"maxiter": 5000},
                                 method="SLSQP")
             S = result.x.reshape(self.d-1, n)
@@ -211,41 +248,125 @@ class GPT:
     def valid_states(self, S):
         return np.all(self.effects @ S >= 0) and np.all(self.effects @ S <= 1)
 
-def rand_probability_table(m, n, k):
-    P = np.random.uniform(low=0, high=1, size=(m, n))
-    
-    @jax.jit
-    def obj(V):
-        A = V[:m*k].reshape(m, k)
-        B = V[m*k:].reshape(k, n)
-        return jp.linalg.norm(A@B - P)
+    def minimize_quantumness(self, n, p=2, max_iter=100):
+        m = n
 
-    @jax.jit
-    def consistency_max(V):
-        A = V[:m*k].reshape(m, k)
-        B = V[m*k:].reshape(k, n)
-        return -(A@B).flatten() +1
+        @partial(jax.jit, static_argnums=(1,2,3))
+        def jit_quantumness(P, n, d, p):
+            a, A, B = [1], [P], []
+            for i in range(1, n+1):
+                a.append(A[-1].trace()/i)
+                B.append(A[-1] - a[-1]*jp.eye(n))
+                A.append(P @ B[-1])
+            j = n - d
+            Phi = sum([((-1 if i == 0 else 1)*a[n-j-1]*a[i]/a[n-j]**2 + \
+                         (i if i < 2 else -1)*a[i-1]/a[n-j])*\
+                            jp.linalg.matrix_power(P, n-j-i)
+                                for i in range(d)])
+            S = jp.linalg.svd(np.eye(n) - Phi, compute_uv=False)
+            return jp.sum(S**p)**(1/p) if p != np.inf else jp.max(S)
 
-    V = np.random.randn(m*k + k*n)
-    result = sc.optimize.minimize(obj, V,\
-                                  jac=jax.jit(jax.jacrev(obj)),\
-                                  tol=1e-16,\
-                                  constraints=[{"type": "ineq",\
-                                                "fun": consistency_max,\
-                                                "jac": jax.jit(jax.jacrev(consistency_max))}],\
-                                  options={"maxiter": 5000},
-                                  method="SLSQP")
-    A = result.x[:m*k].reshape(m, k)
-    B = result.x[m*k:].reshape(k, n)
-    if not (np.all(A @ B >= 0) and np.all(A @ B <= 1)):
-        return rand_probability_table(m, n, k)
-    else:
-        return A @ B
+        @jax.jit
+        def jit_wrapped_quantumness(V):
+            M = V[:m*self.d:].reshape(m, self.d)
+            S = V[m*self.d:].reshape(self.d-1, n)
+            S = jp.vstack([jp.ones(n).reshape(1, n), S])
+            return jit_quantumness(M @ S, n, self.d, p)
 
-def rand_quantum_probability_table(d, m, n, field="complex", r=1):
-    effects = [np.eye(d)] + [rand_effect(d, r=r, field=field) for _ in range(m-1)]
-    states = [rand_dm(d, r=r, field=field) for _ in range(n)]
-    return np.array([[(e @ s).trace() for s in states] for e in effects]).real
+        @jax.jit
+        def quantumness(V):
+            M = V[:m*self.d:].reshape(m, self.d)
+            S = V[m*self.d:].reshape(self.d-1, n)
+            S = jp.vstack([jp.ones(n).reshape(1, n), S])
+            Phi = jp.linalg.pinv(M @ S)
+            sing_vals = jp.linalg.svd(np.eye(n) - Phi, compute_uv=False)
+            return jp.sum(sing_vals**p)**(1/p) if p != np.inf else jp.max(S)
 
-# min_quantumness
-# gpt box
+        @jax.jit
+        def effects_unity(V):
+            M = V[:m*self.d].reshape(m, self.d)
+            return jp.linalg.norm(jp.sum(M, axis=0) - self.unit_effect)**2
+
+        @jax.jit
+        def effects_consistent_min(V):
+            M = V[:m*self.d].reshape(m, self.d)
+            return (M @ self.states).flatten()
+
+        @jax.jit
+        def effects_consistent_max(V):
+            M = V[:m*self.d].reshape(m, self.d)
+            return -(M @ self.states).flatten() + 1
+
+        @jax.jit
+        def states_consistent_min(V):
+            S = V[m*self.d:].reshape(self.d-1, n)
+            S = jp.vstack([jp.ones(n).reshape(1, n), S])
+            return (self.effects @ S).flatten()
+
+        @jax.jit
+        def states_consistent_max(V):
+            S = V[m*self.d:].reshape(self.d-1, n)
+            S = jp.vstack([jp.ones(n).reshape(1, n), S])
+            return -(self.effects @ S).flatten() + 1
+
+        i = 0
+        while i < max_iter:
+            V = np.random.randn(m*self.d + n*(self.d-1))
+            result = sc.optimize.minimize(quantumness, V,\
+                                jac=jax.jit(jax.jacrev(quantumness)),\
+                                tol=1e-16,\
+                                constraints=[{"type": "eq",\
+                                              "fun": effects_unity,\
+                                              "jac": jax.jit(jax.jacrev(effects_unity))},\
+                                            {"type": "ineq",\
+                                              "fun": effects_consistent_min,\
+                                              "jac": jax.jit(jax.jacrev(effects_consistent_min))},\
+                                            {"type": "ineq",\
+                                              "fun": effects_consistent_max,\
+                                              "jac": jax.jit(jax.jacrev(effects_consistent_max))},\
+                                            {"type": "ineq",\
+                                              "fun": states_consistent_min,\
+                                              "jac": jax.jit(jax.jacrev(states_consistent_min))},\
+                                             {"type": "ineq",\
+                                              "fun": states_consistent_max,\
+                                              "jac": jax.jit(jax.jacrev(states_consistent_max))}],\
+                                options={"maxiter": 5000},
+                                method="trust-constr")
+            M = result.x[:m*self.d].reshape(m, self.d)
+            S = result.x[m*self.d:].reshape(self.d-1, n)
+            S = np.vstack([np.ones(n).reshape(1,n), S])
+            if self.valid_measurement(M) and self.valid_states(S) and \
+                    np.all(M @ S >=0) and np.all(M @ S <= 1): 
+                return M, S
+            i += 1
+
+#BoxWorld = GPT(np.array([[1,0,1], [-1,0,1], [0,1,1], [0,-1,1]])/2,\
+#               np.array([[-1,-1,1], [-1,1,1], [1,1,1], [1,-1,1]]).T,\
+#               unit_effect=np.array([0,0,1]))
+
+class GPTStates:
+    def __init__(self, states):
+        self.states = states
+
+class GPTEffects:
+    def __init__(self, effects):
+        self.effects = effects
+        self.inverted = False
+
+    def __lshift__(self, other):
+        if np.all(other >= 0) and np.all(other <= 1) and np.isclose(np.sum(other),1):
+            return np.linalg.pinv(self.effects) @ other
+        return self.effects @ other
+
+    def __invert__(self):
+        self.inverted = True if not self.inverted else False
+        return self
+
+    def __inverted__(self, A):
+        A = A if not self.inverted else spectral_inverse(A)
+        self.inverted = False if self.inverted else self.inverted
+        return A
+
+    def __or__(self, other):
+        if type(other) == GPTStates:
+            return self.__inverted__(self.effects @ other.states)
