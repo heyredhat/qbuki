@@ -18,15 +18,18 @@ def normalize(v):
     """
     return v/np.linalg.norm(v)
 
+def full_rank_decomposition(M):
+    U, D, V = np.linalg.svd(M)
+    m = (np.isclose(D, 0)).argmax()
+    m = m if m != 0 else len(D)
+    sqrtD = np.sqrt(np.diag(D[:m]))
+    return U[:,:m] @ sqrtD, sqrtD @ V[:m,:]
+
 def spectral_inverse(M):
     r"""
     Spectral/group inverse.
     """
-    U, D, V = np.linalg.svd(M)
-    m = (np.isclose(D, 0)).argmax()
-    m = m if m != 0 else M.shape[0]
-    B = U[:, :m]
-    C = np.diag(D[:m]) @ V[:m, :]
+    B, C = full_rank_decomposition(M)
     return (B @ np.linalg.matrix_power(C @ B, -2) @ C)
 
 def basis(d, i):
@@ -197,7 +200,6 @@ def reverse_stereographic_projection(X, pole=None):
 def pnorm(A, p=2):
     S = np.linalg.svd(A, compute_uv=False)
     return np.sum(S**p)**(1/p) if p != np.inf else np.max(S)
-
 
 def sample_from_povm(E, rho, n=1):
     return np.random.choice(list(range(len(E))), size=n, p=np.squeeze((E << rho).real))

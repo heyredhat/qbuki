@@ -25,6 +25,12 @@ def rand_ket(d, field="complex"):
     """
     return normalize(rand_ginibre((d, 1), field=field))
 
+def rand_ket_hs(d, field="complex"):
+    if field == "complex": 
+        return unitary_group.rvs(d) @ np.eye(d)[0]
+    elif field == "real":
+        return ortho_group.rvs(d) @ np.eye(d)[0]
+        
 def rand_herm(d, field="complex"):
     r"""
     Random Hermitian (symmetric) matrix.
@@ -79,12 +85,13 @@ def rand_povm(d, n=None, r=None, field="complex"):
         povm[i, :, :] = S @ Wi @ S
     return povm
 
-def rand_effect(d, n=None, r=1, field="complex"):
+def rand_effect(d, n=None, r=None, field="complex"):
     r"""
     Generates a Haar distributed random POVM effect of Hilbert space dimension $d$, 
     as if it were part of a POVM of $n$ elements with rank $m$. 
     """
     n = n if type(n) != type(None) else state_space_dimension(d, field)
+    r = r if type(r) != type(None) else d
 
     X = rand_ginibre((d, r), field=field)
     W = X @ X.conjugate().T
