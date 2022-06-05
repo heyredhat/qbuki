@@ -4,13 +4,15 @@ import scipy.linalg
 from scipy.stats import ortho_group
 from scipy.stats import unitary_group
 
+import jax
+import jax.numpy as jp
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 from .utils import *
+from .povm_utils import *
 
-def rand_probs(n, m):
-    r"""m random probability vectors of length n."""
-    return np.random.dirichlet((1,)*n, size=m).T
-
-def rand_ginibre(shape, field="complex"):
+def rand_ginibre(*shape, field="complex"):
     r"""
     Random sample from Ginibre ensemble.
     """
@@ -23,19 +25,19 @@ def rand_ket(d, field="complex"):
     r"""
     Random ket.
     """
-    return normalize(rand_ginibre((d, 1), field=field))
+    return normalize(rand_ginibre(d, 1, field=field))
 
 def rand_ket_hs(d, field="complex"):
     if field == "complex": 
-        return unitary_group.rvs(d) @ np.eye(d)[0]
+        return (unitary_group.rvs(d) @ np.eye(d)[0]).reshape(d, 1)
     elif field == "real":
-        return ortho_group.rvs(d) @ np.eye(d)[0]
+        return ortho_group.rvs(d) @ np.eye(d)[0].reshape(d, 1)
         
 def rand_herm(d, field="complex"):
     r"""
     Random Hermitian (symmetric) matrix.
     """
-    X = rand_ginibre((d, d), field=field)
+    X = rand_ginibre(d, d, field=field)
     return (X + X.conj().T)/2
 
 def rand_dm(d, r=None, field="complex"):
@@ -43,7 +45,7 @@ def rand_dm(d, r=None, field="complex"):
     Random density matrix.
     """
     r = r if type(r) != type(None) else d
-    X = rand_ginibre((d, r), field=field)
+    X = rand_ginibre(d, r, field=field)
     rho = X @ X.conj().T
     return rho/rho.trace()
 
@@ -75,7 +77,7 @@ def rand_povm(d, n=None, r=None, field="complex"):
         S = np.zeros(d)
 
     for i in range(n):
-        Xi = rand_ginibre((d, r), field=field)
+        Xi = rand_ginibre(d, r, field=field)
         Wi = Xi @ Xi.conjugate().T
         povm[i, :, :] = Wi
         S = S + Wi
@@ -93,14 +95,14 @@ def rand_effect(d, n=None, r=None, field="complex"):
     n = n if type(n) != type(None) else state_space_dimension(d, field)
     r = r if type(r) != type(None) else d
 
-    X = rand_ginibre((d, r), field=field)
+    X = rand_ginibre(d, r, field=field)
     W = X @ X.conjugate().T
-    Y = rand_ginibre((d, (n-1)*r), field=field)
+    Y = rand_ginibre(d, (n-1)*r, field=field)
     S = W + Y @ Y.conjugate().T
     S = sc.linalg.fractional_matrix_power(S, -1/2)
     return S @ W @ S.conjugate().T
 
-def rand_ftf(d, n=None, field="complex", rtol=1e-15, atol=1e-15):
+def rand_ftf(d, n=None, field="complex"):
     """
     Random tight frame.
     """
@@ -131,7 +133,47 @@ def rand_kraus_operators(d, n, field="complex"):
     r"""
     Random Kraus operators.
     """
-    G = [rand_ginibre((d, d), field=field) for i in range(n)]
+    G = [rand_ginibre(d, d, field=field) for i in range(n)]
     H = sum([g.conj().T @ g for g in G])
     S = sc.linalg.fractional_matrix_power(H, -1/2)
     return np.array([g @ S for g in G])
+
+def rand_probs(n, m):
+    r"""m random probability vectors of length n."""
+    return np.random.dirichlet((1,)*n, size=m).T
+
+def rand_probs_table(m, n, r):
+    P = np.random.uniform(low=0, high=1, size=(m, n))
+    
+    @jax.jit
+    def obj(V):
+        A = V[:m*r].reshape(m, r)
+        B = V[m*r:].reshape(r, n)
+        return jp.linalg.norm(A@B - P)
+
+    @jax.jit
+    def consistency_max(V):
+        A = V[:m*r].reshape(m, r)
+        B = V[m*r:].reshape(r, n)
+        return -(A@B).flatten() +1
+
+    V = np.random.randn(m*r + r*n)
+    result = sc.optimize.minimize(obj, V,\
+                                  jac=jax.jit(jax.jacrev(obj)),\
+                                  tol=1e-16,\
+                                  constraints=[{"type": "ineq",\
+                                                "fun": consistency_max,\
+                                                "jac": jax.jit(jax.jacrev(consistency_max))}],\
+                                  options={"maxiter": 5000},
+                                  method="SLSQP")
+    A = result.x[:m*r].reshape(m, r)
+    B = result.x[m*r:].reshape(r, n)
+    if not (np.all(A @ B >= 0) and np.all(A @ B <= 1)):
+        return rand_probs_table(m, n, r)
+    else:
+        return A @ B
+
+def rand_quantum_probs_table(d, m, n, r=1, field="complex"):
+    effects = [np.eye(d)] + [rand_effect(d, r=r, field=field) for _ in range(m-1)]
+    states = [rand_dm(d, r=r, field=field) for _ in range(n)]
+    return np.array([[(e @ s).trace() for s in states] for e in effects]).real

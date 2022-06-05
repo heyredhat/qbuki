@@ -3,6 +3,7 @@ import pkg_resources
 from itertools import product
 
 from .weyl_heisenberg import *
+from .povm_utils import *
 
 def sic_fiducial(d):
     r"""

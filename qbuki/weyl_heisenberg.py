@@ -17,18 +17,22 @@ def shift(d):
                     if i != d-1 else np.outer(basis(d, 0),basis(d, i))\
                         for i in range(d) for j in range(d)])/d
 
-def displace(d, a, b):
-    r"""
-    The displacement operator $\hat{D}_{a,b} = (-e^{\frac{i\pi}{d}})^{ab}\hat{X}^{b}\hat{Z}^{a}$ for dimension $d$.
-    """
+def discrete_Q(d):
+    return d*sc.linalg.logm(clock(d))/(2*np.pi*1j)
+
+def discrete_P(d):
+    fft = fft_matrix(d)
+    return fft @ discrete_Q(d) @ fft.conj().T 
+
+def displace(d, q, p):
     Z, X = clock(d), shift(d)
-    return (-np.exp(1j*np.pi/d))**(a*b)*np.linalg.matrix_power(X,b) @ np.linalg.matrix_power(Z,a)
+    return (-np.exp(1j*np.pi/d))**(q*p)*np.linalg.matrix_power(X,q) @ np.linalg.matrix_power(Z,p)
 
 def displacement_operators(d):
     r"""
     Returns a dictionary associating $(a, b)$ with $\hat{D}_{a,b}$ for $a, b \in [0, d)$.
     """
-    return np.array([displace(d, a, b) for a in range(d) for b in range(d)])
+    return np.array([displace(d, q, p) for q in range(d) for p in range(d)])
 
 def weyl_heisenberg_frame(fiducial):
     r"""
@@ -48,6 +52,6 @@ def weyl_heisenberg_povm(fiducial):
     if fiducial.shape[1] != 1:
         d = fiducial.shape[0]
         D = displacement_operators(d)
-        return np.array([D[(a,b)] @ fiducial @ D[(a,b)].conj().T for a in range(d) for b in range(d)])/fiducial.shape[0]
+        return np.array([O @ fiducial @ O.conj().T for O in D])/fiducial.shape[0]
     else:
-        return frame_povm(weyl_heisenberg_frame(fiducial))/fiducial.shape[0]
+        return frame_povm(weyl_heisenberg_frame(fiducial))

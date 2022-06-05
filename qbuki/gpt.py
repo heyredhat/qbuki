@@ -19,42 +19,6 @@ import matplotlib.colors as colors
 from .utils import *
 from .random import *
 
-def rand_probability_table(m, n, k):
-    P = np.random.uniform(low=0, high=1, size=(m, n))
-    
-    @jax.jit
-    def obj(V):
-        A = V[:m*k].reshape(m, k)
-        B = V[m*k:].reshape(k, n)
-        return jp.linalg.norm(A@B - P)
-
-    @jax.jit
-    def consistency_max(V):
-        A = V[:m*k].reshape(m, k)
-        B = V[m*k:].reshape(k, n)
-        return -(A@B).flatten() +1
-
-    V = np.random.randn(m*k + k*n)
-    result = sc.optimize.minimize(obj, V,\
-                                  jac=jax.jit(jax.jacrev(obj)),\
-                                  tol=1e-16,\
-                                  constraints=[{"type": "ineq",\
-                                                "fun": consistency_max,\
-                                                "jac": jax.jit(jax.jacrev(consistency_max))}],\
-                                  options={"maxiter": 5000},
-                                  method="SLSQP")
-    A = result.x[:m*k].reshape(m, k)
-    B = result.x[m*k:].reshape(k, n)
-    if not (np.all(A @ B >= 0) and np.all(A @ B <= 1)):
-        return rand_probability_table(m, n, k)
-    else:
-        return A @ B
-
-def rand_quantum_probability_table(d, m, n, field="complex", r=1):
-    effects = [np.eye(d)] + [rand_effect(d, r=r, field=field) for _ in range(m-1)]
-    states = [rand_dm(d, r=r, field=field) for _ in range(n)]
-    return np.array([[(e @ s).trace() for s in states] for e in effects]).real
-
 def rank_approximation(P, k, sd=1, tol=1e-6, max_iter=1000, verbose=False):
     m, n = P.shape
     S = np.random.randn(m, k)

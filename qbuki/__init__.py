@@ -4,6 +4,7 @@ import scipy as sc
 np.set_printoptions(precision=3, suppress=True)
 
 from .utils import *
+from .povm_utils import *
 from .random import *
 from .weyl_heisenberg import *
 from .sics import *
