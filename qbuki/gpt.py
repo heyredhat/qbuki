@@ -71,31 +71,36 @@ def dual_halfspace_intersection(points):
     n = len(points)
     halfspaces = np.vstack([np.hstack([-points, np.zeros(n).reshape(n,1)]),
                             np.hstack([points, -np.ones(n).reshape(n,1)])])
+    return HalfspaceIntersection(halfspaces, interior_point(halfspaces))
+
+def interior_point(halfspaces):
     norm_vector = np.reshape(np.linalg.norm(halfspaces[:, :-1], axis=1), (halfspaces.shape[0], 1))
     c = np.zeros((halfspaces.shape[1],)); c[-1] = -1
     A = np.hstack((halfspaces[:, :-1], norm_vector))
     b = -halfspaces[:, -1:]
     res = sc.optimize.linprog(c, A_ub=A, b_ub=b, bounds=(None, None))
-    return HalfspaceIntersection(halfspaces, res.x[:-1])
+    return res.x[:-1]
 
-def plot_convex_hull(hull, points=None, fill=True):
+def plot_convex_hull(hull, points=None, fill=True, ax=None):
     points = hull.points if type(points) == type(None) else points
     d = points.shape[1]
 
-    fig = plt.figure()
-    if d == 3:
-        ax = fig.add_subplot(111, projection="3d") 
-    else:    
-        ax = fig.add_subplot(111)
-        ax.set_aspect('equal')
+    if type(ax) == type(None):
+        fig = plt.figure()
+        if d == 3:
+            ax = fig.add_subplot(111, projection="3d") 
+        else:    
+            ax = fig.add_subplot(111)
+            ax.set_aspect('equal')
 
     ax.plot(*[points[:,i] for i in range(d)], 'bo')
 
     if d == 3:
         if fill:
+            c = colors.rgb2hex(sc.rand(3))
             for simplex in hull.simplices:
                 f = a3.art3d.Poly3DCollection([[[points[simplex[i], j] for j in range(d)] for i in range(d)]])
-                f.set_color(colors.rgb2hex(sc.rand(3)))
+                f.set_color(c)
                 f.set_edgecolor('k')
                 f.set_alpha(0.4)
                 ax.add_collection3d(f)
@@ -106,6 +111,7 @@ def plot_convex_hull(hull, points=None, fill=True):
         for simplex in hull.simplices:
             ax.plot(*[points[simplex, i] for i in range(d)], 'black')
         plt.fill(*[points[hull.vertices,i] for i in range(d)], color=colors.rgb2hex(sc.rand(3)), alpha=0.3)
+    return ax
 
 class GPT:
     @classmethod
@@ -212,102 +218,6 @@ class GPT:
     def valid_states(self, S):
         return np.all(self.effects @ S >= 0) and np.all(self.effects @ S <= 1)
 
-    def minimize_quantumness(self, n, p=2, max_iter=100):
-        m = n
-
-        @partial(jax.jit, static_argnums=(1,2,3))
-        def jit_quantumness(P, n, d, p):
-            a, A, B = [1], [P], []
-            for i in range(1, n+1):
-                a.append(A[-1].trace()/i)
-                B.append(A[-1] - a[-1]*jp.eye(n))
-                A.append(P @ B[-1])
-            j = n - d
-            Phi = sum([((-1 if i == 0 else 1)*a[n-j-1]*a[i]/a[n-j]**2 + \
-                         (i if i < 2 else -1)*a[i-1]/a[n-j])*\
-                            jp.linalg.matrix_power(P, n-j-i)
-                                for i in range(d)])
-            S = jp.linalg.svd(np.eye(n) - Phi, compute_uv=False)
-            return jp.sum(S**p)**(1/p) if p != np.inf else jp.max(S)
-
-        @jax.jit
-        def jit_wrapped_quantumness(V):
-            M = V[:m*self.d:].reshape(m, self.d)
-            S = V[m*self.d:].reshape(self.d-1, n)
-            S = jp.vstack([jp.ones(n).reshape(1, n), S])
-            return jit_quantumness(M @ S, n, self.d, p)
-
-        @jax.jit
-        def quantumness(V):
-            M = V[:m*self.d:].reshape(m, self.d)
-            S = V[m*self.d:].reshape(self.d-1, n)
-            S = jp.vstack([jp.ones(n).reshape(1, n), S])
-            Phi = jp.linalg.pinv(M @ S)
-            sing_vals = jp.linalg.svd(np.eye(n) - Phi, compute_uv=False)
-            return jp.sum(sing_vals**p)**(1/p) if p != np.inf else jp.max(S)
-
-        @jax.jit
-        def effects_unity(V):
-            M = V[:m*self.d].reshape(m, self.d)
-            return jp.linalg.norm(jp.sum(M, axis=0) - self.unit_effect)**2
-
-        @jax.jit
-        def effects_consistent_min(V):
-            M = V[:m*self.d].reshape(m, self.d)
-            return (M @ self.states).flatten()
-
-        @jax.jit
-        def effects_consistent_max(V):
-            M = V[:m*self.d].reshape(m, self.d)
-            return -(M @ self.states).flatten() + 1
-
-        @jax.jit
-        def states_consistent_min(V):
-            S = V[m*self.d:].reshape(self.d-1, n)
-            S = jp.vstack([jp.ones(n).reshape(1, n), S])
-            return (self.effects @ S).flatten()
-
-        @jax.jit
-        def states_consistent_max(V):
-            S = V[m*self.d:].reshape(self.d-1, n)
-            S = jp.vstack([jp.ones(n).reshape(1, n), S])
-            return -(self.effects @ S).flatten() + 1
-
-        i = 0
-        while i < max_iter:
-            V = np.random.randn(m*self.d + n*(self.d-1))
-            result = sc.optimize.minimize(quantumness, V,\
-                                jac=jax.jit(jax.jacrev(quantumness)),\
-                                tol=1e-16,\
-                                constraints=[{"type": "eq",\
-                                              "fun": effects_unity,\
-                                              "jac": jax.jit(jax.jacrev(effects_unity))},\
-                                            {"type": "ineq",\
-                                              "fun": effects_consistent_min,\
-                                              "jac": jax.jit(jax.jacrev(effects_consistent_min))},\
-                                            {"type": "ineq",\
-                                              "fun": effects_consistent_max,\
-                                              "jac": jax.jit(jax.jacrev(effects_consistent_max))},\
-                                            {"type": "ineq",\
-                                              "fun": states_consistent_min,\
-                                              "jac": jax.jit(jax.jacrev(states_consistent_min))},\
-                                             {"type": "ineq",\
-                                              "fun": states_consistent_max,\
-                                              "jac": jax.jit(jax.jacrev(states_consistent_max))}],\
-                                options={"maxiter": 5000},
-                                method="trust-constr")
-            M = result.x[:m*self.d].reshape(m, self.d)
-            S = result.x[m*self.d:].reshape(self.d-1, n)
-            S = np.vstack([np.ones(n).reshape(1,n), S])
-            if self.valid_measurement(M) and self.valid_states(S) and \
-                    np.all(M @ S >=0) and np.all(M @ S <= 1): 
-                return M, S
-            i += 1
-
-#BoxWorld = GPT(np.array([[1,0,1], [-1,0,1], [0,1,1], [0,-1,1]])/2,\
-#               np.array([[-1,-1,1], [-1,1,1], [1,1,1], [1,-1,1]]).T,\
-#               unit_effect=np.array([0,0,1]))
-
 class GPTStates:
     def __init__(self, states):
         self.states = states
@@ -334,3 +244,16 @@ class GPTEffects:
     def __or__(self, other):
         if type(other) == GPTStates:
             return self.__inverted__(self.effects @ other.states)
+
+
+
+#BoxWorld = GPT(np.array([[1,0,1], [-1,0,1], [0,1,1], [0,-1,1]])/2,\
+#               np.array([[-1,-1,1], [-1,1,1], [1,1,1], [1,-1,1]]).T,\
+#               unit_effect=np.array([0,0,1]))
+
+
+%matplotlib ipympl
+plot_convex_hull(gpt.logical_effect_space, points=gpt.logical_effect_space.points[:, :-1], fill=False)
+
+%matplotlib ipympl
+plot_convex_hull(gpt.logical_effect_space, points=gpt.logical_effect_space.points[:, 1:], fill=False)

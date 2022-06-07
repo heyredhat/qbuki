@@ -47,54 +47,11 @@ class Operators:
         """
         return sum(self.E)
 
-    def __invert__(self):
-        r"""
-        Toggles inversion: ~A.
-        """
-        self.inverted = True if not self.inverted else False
-        return self
-
-    def __inverted__(self, A):
-        r"""
-        Returns A if not inverted else returns the spectral inverse of A, and then uninverts.
-        """
-        A = A if not self.inverted else spectral_inverse(A)
-        self.inverted = False if self.inverted else self.inverted
-        return A
-
-    def flatten(self):
-        r"""
-        Returns the matrix whose columns are vectorized operators.
-        """
-        return self.E.reshape(self.E.shape[0], np.prod(self.E.shape[1:])).T
-
-    def __xor__(self, other):
-        r"""
-        A^B gives the (inverted) matrix of traces between elements of self and elements of other.
-        """
-        return self.__inverted__(self.flatten().conj().T @ other.flatten())
-    
     def bias(self):
         r"""
         Returns the traces of each operator.
         """
         return np.trace(self.E, axis1=1, axis2=2)
-
-    def __or__(self, other):
-        r"""
-        A|B gives the (inverted) matrix of traces between elements of self and elements of other, the latter normalized to trace 1.
-        """
-        return self.__inverted__(self.flatten().conj().T @ (other.flatten()/other.bias()))
-
-    def __lshift__(self, other):
-        r"""
-        A << rho expands rho in terms of A. 
-        A << p reconstructs rho from p.
-        """
-        if len(other.shape) == 1 or other.shape[1] == 1:
-            return (self.flatten() @ (~self^self) @ other).reshape(self.E.shape[1:])
-        else:
-            return (self.flatten().conj().T @ other.flatten()).reshape(len(self), 1)
     
     def conj(self):
         r"""
@@ -150,6 +107,49 @@ class Operators:
         Upgrades operators to act on the i'th place of a tensor product with structure dims.
         """
         return Operators([upgrade(e, i, dims) for e in self[:]])
+
+    def flatten(self):
+        r"""
+        Returns the matrix whose columns are vectorized operators.
+        """
+        return self.E.reshape(self.E.shape[0], np.prod(self.E.shape[1:])).T
+
+    def __invert__(self):
+        r"""
+        Toggles inversion: ~A.
+        """
+        self.inverted = True if not self.inverted else False
+        return self
+
+    def __inverted__(self, A):
+        r"""
+        Returns A if not inverted else returns the spectral inverse of A, and then uninverts.
+        """
+        A = A if not self.inverted else spectral_inverse(A)
+        self.inverted = False if self.inverted else self.inverted
+        return A
+
+    def __xor__(self, other):
+        r"""
+        A^B gives the (inverted) matrix of traces between elements of self and elements of other.
+        """
+        return self.__inverted__(self.flatten().conj().T @ other.flatten())
+    
+    def __or__(self, other):
+        r"""
+        A|B gives the (inverted) matrix of traces between elements of self and elements of other, the latter normalized to trace 1.
+        """
+        return self.__inverted__(self.flatten().conj().T @ (other.flatten()/other.bias()))
+
+    def __lshift__(self, other):
+        r"""
+        A << rho expands rho in terms of A. 
+        A << p reconstructs rho from p.
+        """
+        if len(other.shape) == 1 or other.shape[1] == 1:
+            return (self.flatten() @ (~self^self) @ other).reshape(self.E.shape[1:])
+        else:
+            return (self.flatten().conj().T @ other.flatten()).reshape(len(self), 1)
     
     def superoperator(self):
         r"""
