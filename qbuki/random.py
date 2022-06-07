@@ -129,7 +129,7 @@ def rand_funtf(d, n=None, field="complex", rtol=1e-15, atol=1e-15):
         R = np.array([state/np.linalg.norm(state) for state in R.T]).T
     return sc.linalg.polar(R)[0]
 
-def rand_kraus_operators(d, n, field="complex"):
+def rand_kraus(d, n, field="complex"):
     r"""
     Random Kraus operators.
     """
@@ -143,21 +143,26 @@ def rand_probs(n, m):
     return np.random.dirichlet((1,)*n, size=m).T
 
 def rand_probs_table(m, n, r):
-    P = np.random.uniform(low=0, high=1, size=(m, n))
-    
+    if r < 2:
+        raise Exception("r must be > 1")
+    P = np.vstack([np.ones((1,n)), np.random.uniform(low=0, high=1, size=(m-1, n))])
+    r = r - 1
+
     @jax.jit
     def obj(V):
-        A = V[:m*r].reshape(m, r)
-        B = V[m*r:].reshape(r, n)
-        return jp.linalg.norm(A@B - P)
+        A = V[:(m-1)*r].reshape(m-1, r)
+        B = V[(m-1)*r:].reshape(r, n)
+        AB = jp.vstack([np.ones((1,n)), A@B])
+        return jp.linalg.norm(AB - P)
 
     @jax.jit
     def consistency_max(V):
-        A = V[:m*r].reshape(m, r)
-        B = V[m*r:].reshape(r, n)
-        return -(A@B).flatten() +1
+        A = V[:(m-1)*r].reshape(m-1, r)
+        B = V[(m-1)*r:].reshape(r, n)
+        AB = jp.vstack([np.ones((1,n)), A@B])
+        return -(AB).flatten() + 1
 
-    V = np.random.randn(m*r + r*n)
+    V = np.random.randn((m-1)*r + r*n)
     result = sc.optimize.minimize(obj, V,\
                                   jac=jax.jit(jax.jacrev(obj)),\
                                   tol=1e-16,\
@@ -166,14 +171,25 @@ def rand_probs_table(m, n, r):
                                                 "jac": jax.jit(jax.jacrev(consistency_max))}],\
                                   options={"maxiter": 5000},
                                   method="SLSQP")
-    A = result.x[:m*r].reshape(m, r)
-    B = result.x[m*r:].reshape(r, n)
-    if not (np.all(A @ B >= 0) and np.all(A @ B <= 1)):
-        return rand_probs_table(m, n, r)
+    A = result.x[:(m-1)*r].reshape(m-1, r)
+    B = result.x[(m-1)*r:].reshape(r, n)
+    AB = np.vstack([np.ones((1,n)), A@B])
+    if not (np.all(AB >= 0) and np.all(AB <= 1)):
+        return rand_probs_table(m, n, r+1)
     else:
-        return A @ B
+        return AB
 
 def rand_quantum_probs_table(d, m, n, r=1, field="complex"):
     effects = [np.eye(d)] + [rand_effect(d, r=r, field=field) for _ in range(m-1)]
     states = [rand_dm(d, r=r, field=field) for _ in range(n)]
     return np.array([[(e @ s).trace() for s in states] for e in effects]).real
+
+def dist_in_hull(points, n):
+    dims = points.shape[-1]
+    hull = points[ConvexHull(points).vertices]
+    deln = hull[Delaunay(hull).simplices]
+
+    vols = np.abs(det(deln[:, :dims, :] - deln[:, dims:, :])) / np.math.factorial(dims)    
+    sample = np.random.choice(len(vols), size = n, p = vols / vols.sum())
+
+    return np.einsum('ijk, ij -> ik', deln[sample], dirichlet.rvs([1]*(dims + 1), size = n))
