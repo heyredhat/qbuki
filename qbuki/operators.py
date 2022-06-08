@@ -41,12 +41,6 @@ class Operators:
         """
         return self.E.__iter__()
 
-    def sum(self):
-        r"""
-        Sum of operators.
-        """
-        return sum(self.E)
-
     def bias(self):
         r"""
         Returns the traces of each operator.
@@ -184,7 +178,7 @@ class Operators:
         r"""
         Applies function f to each operator.
         """
-        return Operators([f(e) for e in self[:]])
+        return Operators(np.array([f(e) for e in self[:]]))
 
 def quantumness(A, B, p=2):
     S = np.linalg.svd(np.eye(len(A)) - (~A|B), compute_uv=False)

@@ -19,44 +19,6 @@ import matplotlib.colors as colors
 from .utils import *
 from .random import *
 
-def rank_approximation(P, k, sd=1, tol=1e-6, max_iter=1000, verbose=False):
-    m, n = P.shape
-    S = np.random.randn(m, k)
-    E = np.random.randn(k, n)
-    W = np.eye(m*n)/sd**2 
-    t = 0; last = None
-    while t < max_iter:
-        try:
-            U = np.kron(E, np.eye(m)) @ W @ np.kron(E.T, np.eye(m))
-            V = -2*np.kron(E, np.eye(m)) @ W @ P.T.flatten()
-            Y = np.kron(E.T,np.eye(m))
-
-            Svec = cp.Variable(k*m)
-            Sprob = cp.Problem(cp.Minimize(cp.quad_form(Svec, U) + V.T @ Svec), [0 <= Y @ Svec, Y @ Svec <= 1])
-            Sresult = Sprob.solve()
-            S = Svec.value.reshape(k, m).T
-
-            U = np.kron(np.eye(n), S).T @ W @ np.kron(np.eye(n), S)
-            V = -2*np.kron(np.eye(n), S).T @ W @ P.T.flatten()
-            Y = np.kron(np.eye(n), S)
-
-            Evec = cp.Variable(k*n)
-            Eprob = cp.Problem(cp.Minimize(cp.quad_form(Evec, U) + V.T @ Evec), [0 <= Y @ Evec, Y @ Evec <= 1])
-            Eresult = Eprob.solve()
-            E = Evec.value.reshape(n,k).T
-            if verbose and t % 100 == 0:
-                print("%d: chi_S = %f | chi_E = %f " % (t, Sresult, Eresult))
-
-            if type(last) != type(None) and abs(Sresult-last[0]) <= tol and abs(Eresult-last[1]) <= tol:
-                break
-            last = [Sresult, Eresult]
-        except:
-            S = np.random.randn(m, k)
-            E = np.random.randn(k, n)
-            continue
-        t += 1
-    return S @ E
-
 def gpt_full_rank_decomposition(M):
     Q, R = np.linalg.qr(M.T)
     R *= Q[0,0] 
@@ -113,6 +75,44 @@ def plot_convex_hull(hull, points=None, fill=True, ax=None):
         plt.fill(*[points[hull.vertices,i] for i in range(d)], color=colors.rgb2hex(sc.rand(3)), alpha=0.3)
     return ax
 
+def rank_approximation(P, k, sd=1, tol=1e-6, max_iter=1000, verbose=False):
+    m, n = P.shape
+    S = np.random.randn(m, k)
+    E = np.random.randn(k, n)
+    W = np.eye(m*n)/sd**2 
+    t = 0; last = None
+    while t < max_iter:
+        try:
+            U = np.kron(E, np.eye(m)) @ W @ np.kron(E.T, np.eye(m))
+            V = -2*np.kron(E, np.eye(m)) @ W @ P.T.flatten()
+            Y = np.kron(E.T,np.eye(m))
+
+            Svec = cp.Variable(k*m)
+            Sprob = cp.Problem(cp.Minimize(cp.quad_form(Svec, U) + V.T @ Svec), [0 <= Y @ Svec, Y @ Svec <= 1])
+            Sresult = Sprob.solve()
+            S = Svec.value.reshape(k, m).T
+
+            U = np.kron(np.eye(n), S).T @ W @ np.kron(np.eye(n), S)
+            V = -2*np.kron(np.eye(n), S).T @ W @ P.T.flatten()
+            Y = np.kron(np.eye(n), S)
+
+            Evec = cp.Variable(k*n)
+            Eprob = cp.Problem(cp.Minimize(cp.quad_form(Evec, U) + V.T @ Evec), [0 <= Y @ Evec, Y @ Evec <= 1])
+            Eresult = Eprob.solve()
+            E = Evec.value.reshape(n,k).T
+            if verbose and t % 100 == 0:
+                print("%d: chi_S = %f | chi_E = %f " % (t, Sresult, Eresult))
+
+            if type(last) != type(None) and abs(Sresult-last[0]) <= tol and abs(Eresult-last[1]) <= tol and not np.isclose(np.sum(S @ E),0):
+                break
+            last = [Sresult, Eresult]
+        except:
+            S = np.random.randn(m, k)
+            E = np.random.randn(k, n)
+            continue
+        t += 1
+    return S @ E
+
 class GPT:
     @classmethod
     def from_probability_table(cls, P):
@@ -139,6 +139,50 @@ class GPT:
         self.d = self.states.shape[0]
 
     def sample_measurement(self, m, max_iter=100):
+        if m == 1:
+            return sample_convex_hull(self.effect_space, 1)
+
+        A = self.effect_space.equations[:, :-1]
+        b = self.effect_space.equations[:, -1]
+        B = np.tile(b, (m,1)).T
+        
+        @jax.jit
+        def unity(V):
+            M = V.reshape(m, self.d)
+            return jp.linalg.norm(jp.sum(M, axis=0) - self.unit_effect)**2
+
+        @jax.jit
+        def consistency(V):
+            M = V.reshape(m, self.d)
+            return (- A @ M.T - B).flatten()
+
+        i = 0
+        while i < max_iter:
+            V = np.random.randn(m*self.d)
+            result = sc.optimize.minimize(unity, V,\
+                                jac=jax.jit(jax.jacrev(unity)),\
+                                tol=1e-16,\
+                                constraints=[{"type": "ineq",\
+                                                "fun": consistency,\
+                                                "jac": jax.jit(jax.jacrev(consistency))}],\
+                                options={"maxiter": 5000},
+                                method="SLSQP")
+            M = result.x.reshape(m, self.d)
+            if self.valid_measurement(M):
+                return M
+            i += 1
+    
+    def valid_measurement(self, M):
+        m = M.shape[0]
+        A = self.effect_space.equations[:, :-1]
+        b = self.effect_space.equations[:, -1]
+        B = np.tile(b, (m,1)).T
+        return np.all((- A @ M.T - B).flatten() >= 0) and np.allclose(np.sum(M, axis=0), self.unit_effect)
+
+    def sample_logical_measurement(self, m, max_iter=100):
+        if m == 1:
+            return sample_convex_hull(self.logical_effect_space, 1)
+
         @jax.jit
         def unity(V):
             M = V.reshape(m, self.d)
@@ -169,14 +213,17 @@ class GPT:
                                 options={"maxiter": 5000},
                                 method="SLSQP")
             M = result.x.reshape(m, self.d)
-            if self.valid_measurement(M):
+            if self.valid_logical_measurement(M):
                 return M
             i += 1
     
-    def valid_measurement(self, M):
+    def valid_logical_measurement(self, M):
         return np.all(M @ self.states >= 0) and np.all(M @ self.states <= 1) and np.allclose(np.sum(M, axis=0), self.unit_effect)
 
-    def sample_states(self, n, max_iter=100):
+    def sample_states(self, n):
+        return np.vstack([np.ones((1, n)), sample_convex_hull(self.state_space, n).T])
+
+    def sample_logical_states(self, n, max_iter=100):
         @jax.jit
         def info_complete(V):
             S = V.reshape(self.d-1, n)
@@ -211,21 +258,101 @@ class GPT:
                                 method="SLSQP")
             S = result.x.reshape(self.d-1, n)
             S = np.vstack([np.ones(n).reshape(1,n), S])
-            if self.valid_states(S):
+            if self.valid_logical_states(S):
                 return S
             i += 1
-    
+
     def valid_states(self, S):
+        m = S.shape[1]
+        A = self.state_space.equations[:, :-1]
+        b = self.state_space.equations[:, -1]
+        B = np.tile(b, (m,1)).T
+        print(S)
+        return np.all((- A @ S[1:, :] - B).flatten() >= 0)
+    
+    def valid_logical_states(self, S):
         return np.all(self.effects @ S >= 0) and np.all(self.effects @ S <= 1)
 
 class GPTStates:
     def __init__(self, states):
         self.states = states
 
+    def __len__(self):
+        return self.states.shape[1]
+    
+    def dim(self):
+        return self.states.shape[0]
+    
+    def __getitem__(self, key):
+        return self.states.T[key]
+
+    def __setitem__(self, key, value):
+        self.states.T[key] = value
+    
+    def __iter__(self):
+        return self.states.T.__iter__()
+
+    def __add__(self, other):
+        return GPTStates(np.hstack([self.states, other.states]))
+
+    def __mul__(self, other):
+        return GPTStates(other*self.states)
+    
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
+    def __truediv__(self, other):
+        return self.__mul__(1/other)
+
+    def __and__(self, other):
+        return GPTStates(kron(self.states, other.states))
+    
+    def __mod__(self, f):
+        return GPTStates(np.array([f(e) for e in self.states.T]).T)
+
+    def __lshift__(self, other):  
+        return other @ self.states
+
+    def __rshift__(self, other):
+          return other @ np.linalg.pinv(self.states)
+    
 class GPTEffects:
     def __init__(self, effects):
         self.effects = effects
         self.inverted = False
+
+    def __len__(self):
+        return self.effects.shape[0]
+    
+    def dim(self):
+        return self.effects.shape[1]
+    
+    def __getitem__(self, key):
+        return self.effects[key]
+
+    def __setitem__(self, key, value):
+        self.effects[key] = value
+    
+    def __iter__(self):
+        return self.effects.__iter__()
+
+    def __add__(self, other):
+        return GPTEffects(np.vstack([self.effects, other.effects]))
+
+    def __mul__(self, other):
+        return GPTEffects(other*self.effects)
+    
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
+    def __truediv__(self, other):
+        return self.__mul__(1/other)
+
+    def __and__(self, other):
+        return GPTEffects(kron(self.effects, other.effects))
+    
+    def __mod__(self, f):
+        return GPTEffects(np.array([f(e) for e in self.effects]).T)
 
     def __lshift__(self, other):
         if np.all(other >= 0) and np.all(other <= 1) and np.isclose(np.sum(other),1):
@@ -244,16 +371,3 @@ class GPTEffects:
     def __or__(self, other):
         if type(other) == GPTStates:
             return self.__inverted__(self.effects @ other.states)
-
-
-
-#BoxWorld = GPT(np.array([[1,0,1], [-1,0,1], [0,1,1], [0,-1,1]])/2,\
-#               np.array([[-1,-1,1], [-1,1,1], [1,1,1], [1,-1,1]]).T,\
-#               unit_effect=np.array([0,0,1]))
-
-
-%matplotlib ipympl
-plot_convex_hull(gpt.logical_effect_space, points=gpt.logical_effect_space.points[:, :-1], fill=False)
-
-%matplotlib ipympl
-plot_convex_hull(gpt.logical_effect_space, points=gpt.logical_effect_space.points[:, 1:], fill=False)

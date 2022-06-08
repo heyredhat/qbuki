@@ -184,12 +184,14 @@ def rand_quantum_probs_table(d, m, n, r=1, field="complex"):
     states = [rand_dm(d, r=r, field=field) for _ in range(n)]
     return np.array([[(e @ s).trace() for s in states] for e in effects]).real
 
-def dist_in_hull(points, n):
+def sample_convex_hull(hull, n):
+    # https://stackoverflow.com/questions/59073952/how-to-get-uniformly-distributed-points-in-convex-hull
+    points = hull.points
     dims = points.shape[-1]
-    hull = points[ConvexHull(points).vertices]
-    deln = hull[Delaunay(hull).simplices]
+    hull = points[hull.vertices]
+    deln = hull[sc.spatial.Delaunay(hull).simplices]
 
-    vols = np.abs(det(deln[:, :dims, :] - deln[:, dims:, :])) / np.math.factorial(dims)    
+    vols = np.abs(np.linalg.det(deln[:, :dims, :] - deln[:, dims:, :])) / np.math.factorial(dims)    
     sample = np.random.choice(len(vols), size = n, p = vols / vols.sum())
 
-    return np.einsum('ijk, ij -> ik', deln[sample], dirichlet.rvs([1]*(dims + 1), size = n))
+    return np.einsum('ijk, ij -> ik', deln[sample], sc.stats.dirichlet.rvs([1]*(dims + 1), size = n))
