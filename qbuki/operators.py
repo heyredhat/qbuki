@@ -179,7 +179,3 @@ class Operators:
         Applies function f to each operator.
         """
         return Operators(np.array([f(e) for e in self[:]]))
-
-def quantumness(A, B, p=2):
-    S = np.linalg.svd(np.eye(len(A)) - (~A|B), compute_uv=False)
-    return np.sum(S**p)**(1/p) if p != np.inf else np.max(S)

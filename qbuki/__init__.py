@@ -11,3 +11,4 @@ from .sics import *
 from .rics import *
 from .operators import *
 from .gpt import *
+from .optimize import *

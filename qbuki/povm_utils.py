@@ -2,6 +2,7 @@ import numpy as np
 import scipy as sc
 
 from .utils import *
+from .operators import *
 
 def vn_povm(H):
     r"""
@@ -73,3 +74,9 @@ def discriminator_povm(a, b):
     Fb = (1/(1+p))*(np.eye(d) - a @ a.conj().T)
     Fq = np.eye(d) - Fa - Fb
     return np.array([Fa, Fb, Fq])
+
+#!
+def quantumness(A, B=None, p=2):
+    B = B if type(B) != type(None) else A
+    A, B = Operators(A), Operators(B)
+    return pnorm(np.eye(len(A)) - (~A|B), p)
