@@ -45,10 +45,10 @@ def min_quantumness_parallel(d, n=None, field="complex",
                                         method="SLSQP",\
                                         tol=1e-26,\
                                         options={"ftol": 1e-26,\
-                                                "disp": False,\
-                                                "maxiter": 10000},\
+                                                    "disp": False,\
+                                                    "maxiter": 10000},\
                                         max_iter=100,\
-                                        return_povm=True):
+                                        return_params=False):
     r = int(d*(d+1)/2) if field == "real" else int(d**2)
     n = r if type(n) == type(None) else n
     norm_func = decode_norm(norm, jit=True)
@@ -103,4 +103,4 @@ def min_quantumness_parallel(d, n=None, field="complex",
                     options=options,\
                     method=method)
         if not np.isclose(result.fun, float("nan"), equal_nan=True):
-            return final_decode(result.x) if return_povm else np.array(decode_params(result.x))
+            return np.array(decode_params(result.x)) if return_params else final_decode(result.x)
