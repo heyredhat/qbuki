@@ -80,3 +80,10 @@ def quantumness(A, B=None, p=2):
     B = B if type(B) != type(None) else A
     A, B = Operators(A), Operators(B)
     return pnorm(np.eye(len(A)) - (~A|B), p)
+
+#!
+def frame_quantumness(R, S=None, p=2):
+    d, n = R.shape
+    S = R if type(S) == type(None) else S
+    P = np.abs(R.conj().T @ (np.tile(1/np.linalg.norm(S, axis=0), (d, 1))*S))**2
+    return pnorm(np.eye(n) - spectral_inverse(P), p)
