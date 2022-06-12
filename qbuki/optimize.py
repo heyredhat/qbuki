@@ -39,58 +39,80 @@ def decode_norm(norm):
             return jax.jit(lambda A: jit_pnorm(A, p))
     return norm
 
-def min_quantumness_parallel(d, n=None, field="complex",
-                                        norm="p2",\
-                                        rank1=True,\
-                                        method="SLSQP",\
-                                        tol=1e-26,\
-                                        options={"ftol": 1e-26,\
-                                                    "disp": False,\
-                                                    "maxiter": 10000},\
-                                        max_iter=100,\
-                                        return_params=False):
+def min_quantumness(d, n=None, field="complex",
+                               norm="p2",\
+                               rank1=True,\
+                               parallel=True,\
+                               method="SLSQP",\
+                               tol=1e-26,\
+                               options={"disp": False,\
+                                        "maxiter": 10000},\
+                               max_iter=100,\
+                               return_params=False):
     r = int(d*(d+1)/2) if field == "real" else int(d**2)
     n = r if type(n) == type(None) else n
-    norm_func = decode_norm(norm, jit=True)
+    norm_func = decode_norm(norm)
 
     if rank1:
         if field == "complex":
-            decode_params = jax.jit(lambda V: (V[:d*n] + 1j*V[d*n:]).reshape(d, n))
-            initial_params = lambda: np.random.randn(2*d*n)
+            decode_params = jax.jit(lambda V: [(V[:d*n] + 1j*V[d*n:]).reshape(d, n)]*2) if parallel else\
+                            jax.jit(lambda V: [(V[:d*n] + 1j*V[d*n:2*d*n]).reshape(d, n),\
+                                               (V[2*d*n:3*d*n] + 1j*V[3*d*n:]).reshape(d, n)])
+            initial_params = (lambda: np.random.randn(2*d*n)) if parallel else (lambda: np.random.randn(4*d*n)) 
         elif field == "real":
-            decode_params = jax.jit(lambda V: V.reshape(d, n))
-            initial_params = lambda: np.random.randn(d*n)
-        final_decode = lambda V: frame_povm(np.array(decode_params(V)))
+            decode_params = jax.jit(lambda V: [V.reshape(d, n)]*2) if parallel else\
+                            jax.jit(lambda V: [V[:d*n].reshape(d, n), V[d*n:].reshape(d, n)])
+            initial_params = (lambda: np.random.randn(d*n)) if parallel else (lambda: np.random.randn(2*d*n))
+
+        def final_decode(V):
+            if parallel:
+                return frame_povm(np.array(decode_params(V)[0]))
+            else:
+                R, S = decode_params(V)
+                S = jp.tile(1/jp.linalg.norm(S, axis=0), (d, 1))*S
+                return frame_povm(np.array(R)), frame_povm(np.array(S))
 
         @jax.jit
         def wrapped_quantumness(V):
-            R = decode_params(V)
-            P = jp.abs(R.conj().T @ (jp.tile(1/jp.linalg.norm(R, axis=0), (d, 1))*R))**2
+            R, S = decode_params(V)
+            S = jp.tile(1/jp.linalg.norm(S, axis=0), (d, 1))*S
+            P = jp.abs(R.conj().T @ S)**2
             return norm_func(jit_spectral_inverse(P, r))
 
         @jax.jit
         def wrapped_tightness(V):
-            R = decode_params(V)
+            R, S = decode_params(V)
             return jp.linalg.norm((R @ R.conj().T) - jp.eye(d))**2
     else:
         if field == "complex":
-            decode_params = jax.jit(lambda V: (V[:n*d**2] + 1j*V[n*d**2:]).reshape(n, d, d))
-            initial_params = lambda: np.random.randn(2*d**2*n)
+            decode_params = jax.jit(lambda V: [(V[:n*d**2] + 1j*V[n*d**2:]).reshape(n, d, d)]*2) if parallel else\
+                            jax.jit(lambda V: [(V[:n*d**2] + 1j*V[n*d**2:2*n*d**2]).reshape(n, d, d),\
+                                               (V[2*n*d**2:3*n*d**2] + 1j*V[3*n*d**2:]).reshape(n, d, d)])
+            initial_params = (lambda: np.random.randn(2*n*d**2)) if parallel else (lambda: np.random.randn(4*n*d**2)) 
         elif field == "real":
-            decode_params = jax.jit(lambda V: V.reshape(n, d, d))
-            initial_params = lambda: np.random.randn(d**2*n)
-        final_decode = lambda V: np.array([k.conj().T @ k for k in np.array(decode_params(V))])
+            decode_params = jax.jit(lambda V: [V.reshape(n, d, d)]*2) if parallel else\
+                            jax.jit(lambda V: [V[:n*d**2].reshape(n, d, d), V[n*d**2:].reshape(n, d, d)]) 
+            initial_params = (lambda: np.random.randn(n*d**2)) if parallel else (lambda: np.random.randn(2*n*d**2)) 
+
+        def final_decode(V):
+            make = lambda K: np.array([k.conj().T @ k for k in K])
+            if parallel:
+                return make(decode_params(V)[0])
+            else:
+                R, S = [make(x) for x in decode_params(V)]
+                return R, np.array([s/s.trace() for s in S])
 
         @jax.jit
         def wrapped_quantumness(V):
-            K = decode_params(V)
-            P = jp.einsum("aji, ajk, blk, bli -> ab", K.conj(), K, K.conj(), K)/jp.tile(jp.einsum("aji, aji -> a", K.conj(), K), (n,1))
+            KR, KS = decode_params(V)
+            P = jp.einsum("aji, ajk, blk, bli -> ab", KR.conj(), KR, KS.conj(), KS)/jp.tile(jp.einsum("aji, aji -> a", KS.conj(), KS), (n,1))
             return norm_func(jit_spectral_inverse(P, r))
         
         @jax.jit
         def wrapped_tightness(V):
-            K = decode_params(V).reshape(d*n, d)
-            return jp.linalg.norm((K.conj().T @ K) - jp.eye(d))**2
+            KR, KS = decode_params(V)
+            KR = KR.reshape(d*n, d)
+            return jp.linalg.norm((KR.conj().T @ KR) - jp.eye(d))**2
 
     for t in range(max_iter):
         result = sc.optimize.minimize(\
@@ -103,4 +125,8 @@ def min_quantumness_parallel(d, n=None, field="complex",
                     options=options,\
                     method=method)
         if not np.isclose(result.fun, float("nan"), equal_nan=True):
-            return np.array(decode_params(result.x)) if return_params else final_decode(result.x)
+            if return_params:
+                X = [np.array(x) for x in decode_params(result.x)]
+                return X[0] if parallel else X
+            return final_decode(result.x)
+                
