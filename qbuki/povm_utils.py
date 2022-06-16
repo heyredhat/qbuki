@@ -4,11 +4,13 @@ import scipy as sc
 from .utils import *
 from .operators import *
 
-def vn_povm(H):
+def vn_povm(H, spectrum=False):
     r"""
     Returns a P(O)VM corresponding to the eigenstates of a Hermitian operator.
     """
-    return np.array([np.outer(v, v.conj().T) for v in np.linalg.eig(H)[1][::-1]])
+    L, V = np.linalg.eig(H)
+    E = np.array([np.outer(v, v.conj()) for v in V.T])
+    return L, E if spectrum else E
 
 def tighten(R):
     r"""
@@ -87,3 +89,20 @@ def frame_quantumness(R, S=None, p=2):
     S = R if type(S) == type(None) else S
     P = np.abs(R.conj().T @ (np.tile(1/np.linalg.norm(S, axis=0), (d, 1))*S))**2
     return pnorm(np.eye(n) - spectral_inverse(P), p)
+
+#!
+def weighted_frame_potential(R, t):
+    d, n = R.shape
+    N = [np.linalg.norm(r) for r in R.T]
+    S = np.array([r/N[i] for i, r in enumerate(R.T)])
+    w = [(N[i]**2)/d for i, r in enumerate(R.T)]
+    return sum([w[i]*w[j]*abs(np.vdot(S[i], S[j]))**(2*t) for j in range(n) for i in range(n)])
+
+#!
+def minimum_real_frame_potential(d, t):
+    return np.prod(np.array(list(range(1, 2*t, 2))))/\
+           np.prod(np.array(list(range(d, d + 2*t,2))))
+
+#!
+def minimum_complex_frame_potential(d, t):
+    return 1/sc.special.binom(d+t-1, t)
