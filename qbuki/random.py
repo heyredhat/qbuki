@@ -112,7 +112,7 @@ def rand_ftf(d, n=None, field="complex"):
         R = np.random.randn(d, n) + 1j*np.random.randn(d, n) 
     elif field == "real":
         R = np.random.randn(d, n)
-    return tighten_frame(R)
+    return tighten(R)
 
 def rand_funtf(d, n=None, field="complex", rtol=1e-15, atol=1e-15):
     r"""

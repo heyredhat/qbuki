@@ -1,6 +1,7 @@
 import numpy as np
 
 from .utils import *
+from .povm_utils import *
 
 def clock(d):
     r"""
