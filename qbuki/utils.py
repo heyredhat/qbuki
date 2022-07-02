@@ -127,3 +127,11 @@ def reverse_stereographic_projection(X, pole=None):
         pole = np.eye(len(X)+1)[0]
     X = np.append(X, 0)
     return ((np.linalg.norm(X)**2 - 1)/(np.linalg.norm(X)**2 +1))*pole + (2/(np.linalg.norm(X)**2 +1))*X
+
+def interior_point(halfspaces):
+    norm_vector = np.reshape(np.linalg.norm(halfspaces[:, :-1], axis=1), (halfspaces.shape[0], 1))
+    c = np.zeros((halfspaces.shape[1],)); c[-1] = -1
+    A = np.hstack((halfspaces[:, :-1], norm_vector))
+    b = -halfspaces[:, -1:]
+    res = sc.optimize.linprog(c, A_ub=A, b_ub=b, bounds=(None, None))
+    return res.x[:-1]

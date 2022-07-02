@@ -11,4 +11,6 @@ from .sics import *
 from .rics import *
 from .operators import *
 from .gpt import *
-from .optimize import *
+from .optimize.quantumness import *
+from .optimize.meffs import *
+from .qplex import *

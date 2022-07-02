@@ -8,8 +8,8 @@ from jax.config import config
 config.update('jax_platform_name', 'cpu')
 config.update("jax_enable_x64", True)
 
-from .utils import *
-from .povm_utils import *
+from ..utils import *
+from ..povm_utils import *
 
 @partial(jax.jit, static_argnums=(1))
 def jit_spectral_inverse(P, r):
