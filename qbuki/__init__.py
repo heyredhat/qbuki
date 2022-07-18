@@ -14,3 +14,5 @@ from .gpt import *
 from .optimize.quantumness import *
 from .optimize.meffs import *
 from .qplex import *
+from .spin import *
+from .grassmannian import *

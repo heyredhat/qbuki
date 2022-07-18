@@ -11,6 +11,10 @@ class Operators:
         self.E = E
         self.inverted = False
 
+    @property
+    def shape(self):
+        return self.E.shape
+
     def __len__(self):
         r"""
         Number of operators.
