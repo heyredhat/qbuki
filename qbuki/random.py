@@ -123,7 +123,6 @@ def rand_funtf(d, n=None, field="complex", rtol=1e-15, atol=1e-15):
         R = np.random.randn(d, n) + 1j*np.random.randn(d, n) 
     elif field == "real":
         R = np.random.randn(d, n)
-    done = False
     while not (np.allclose(R @ R.conj().T, (n/d)*np.eye(d), rtol=rtol, atol=atol) and\
                np.allclose(np.linalg.norm(R, axis=0), np.ones(n), rtol=rtol, atol=atol)):
         R = sc.linalg.polar(R)[0]

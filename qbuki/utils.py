@@ -135,3 +135,19 @@ def interior_point(halfspaces):
     b = -halfspaces[:, -1:]
     res = sc.optimize.linprog(c, A_ub=A, b_ub=b, bounds=(None, None))
     return res.x[:-1]
+
+def gram_to_vecs(G):
+    """
+    Reconstructs vectors from the little Gram matrix via SVD.
+    """
+    n = G.shape[0]
+    U, D, V = np.linalg.svd(G)
+    d = np.count_nonzero(np.round(D, decimals=4))
+    return (np.sqrt(np.diag(D[:d])) @ V[:d])
+
+def permuter(perm, d):
+    return sum([np.outer(kron(*[basis(d, j) for j in np.array(prod)[tuple(perm),]]),\
+                         kron(*[basis(d, i) for i in prod])) for prod in product(list(range(d)), repeat=len(perm))])
+        
+def cntrl_permuter(perm, d):
+    return sc.linalg.block_diag(np.eye(d**len(perm)), permuter(perm, d))

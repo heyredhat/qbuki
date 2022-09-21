@@ -160,9 +160,11 @@ class Operators:
         A < rho applies A to rho, where A is interpreted as a set of Kraus operators forming a channel.
         Similarly A < B applies A to each element of B.
         """
-        return (self.superoperator() @ other.flatten()).reshape(other.shape) if type(other) == np.ndarray\
-                else Operators((self.superoperator() @ other.flatten()).T.reshape(other.E.shape))
-    
+        M = self.superoperator() @ other.flatten()
+        d = int(np.sqrt(len(M)))
+        return M.reshape(d,d) if type(other) == np.ndarray else \
+                 Operators(M.T.reshape(len(other),d,d))
+                 
     def __floordiv__(self, other):
         r"""
         Returns the (inverse) frame superoperator where other is the post measurement states.
