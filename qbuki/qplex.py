@@ -73,9 +73,12 @@ def sample_qplex(d, qplex_pts=None, n_qplex_pts=10000, from_surface=True):
         else:
             pt = np.random.dirichlet((1,)*d**2)
             inner_products = qplex_pts @ pt
-            if np.all(inner_products >= 1/(d*(d+1)-1e-16)) and np.all(inner_products <= 2/(d*(d+1))+1e-16):
+            if np.all(inner_products >= 1/(d*(d+1)-1e-16)) \
+               and np.all(inner_products <= 2/(d*(d+1))+1e-16) \
+               and pt @ pt <= 2/(d*(d+1))+1e-16:
                 qplex_pts = np.vstack([qplex_pts, pt])
     return qplex_pts
+
 
 ####################################################################################################
 
