@@ -84,6 +84,7 @@ def sample_hilbert_qplex(d, n_qplex_pts=10000):
 def mc_batch(qplex_pts, batch):
     d = int(np.sqrt(qplex_pts.shape[1]))
     hits = 0
+    np.random.seed()
     mc_pts = np.random.dirichlet((1,)*d**2, size=batch)
     whittled = mc_pts[np.linalg.norm(mc_pts, axis=1)**2 <= 2/(d*(d+1))]
     if len(whittled) != 0:
