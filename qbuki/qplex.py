@@ -1,5 +1,6 @@
 import numpy as np
 import scipy as sc
+from scipy.special import hyp2f1
 import multiprocessing as mp
 
 from scipy.special import gamma
@@ -54,19 +55,26 @@ def sample_qplex_surface_point(d, constraint=None, constraint_jac=None):
     p = p/np.sum(p)
     return p
 
-def sample_qplex_from_surface_points(d, qplex_pts=None, n_qplex_pts=10000):
+def sample_qplex(d, qplex_pts=None, n_qplex_pts=10000, from_surface=True):
     if type(qplex_pts) == type(None):
         qplex_pts = np.array([[1/d if i == j else  1/(d*(d+1))\
                                 for j in range(d**2)]\
                                     for i in range(d**2)])
         if n_qplex_pts == d**2:
             return qplex_pts
-    constraint, constraint_jac = __make_surface_constraint__(d)
+    if from_surface:
+        constraint, constraint_jac = __make_surface_constraint__(d)
     while len(qplex_pts) < n_qplex_pts:
-        pt = sample_qplex_surface_point(d, constraint=constraint, constraint_jac=constraint_jac)
-        inner_products = qplex_pts @ pt
-        if np.all(inner_products >= 1/(d*(d+1))):
-            qplex_pts = np.vstack([qplex_pts, pt])
+        if from_surface:
+            pt = sample_qplex_surface_point(d, constraint=constraint, constraint_jac=constraint_jac)
+            inner_products = qplex_pts @ pt
+            if np.all(inner_products >= 1/(d*(d+1))):
+                qplex_pts = np.vstack([qplex_pts, pt])
+        else:
+            pt = np.random.dirichlet((1,)*d**2)
+            inner_products = qplex_pts @ pt
+            if np.all(inner_products >= 1/(d*(d+1)-1e-16)) and np.all(inner_products <= 2/(d*(d+1))+1e-16):
+                qplex_pts = np.vstack([qplex_pts, pt])
     return qplex_pts
 
 ####################################################################################################
@@ -100,12 +108,15 @@ def mc_qplex_vol(qplex_pts, n_mc_pts=50000, batch_size=5000):
     remaining = n_mc_pts - batch_size*n_batches
     if remaining != 0:
         batches.append(remaining)
-
     pool = mp.Pool(mp.cpu_count())
     future_res = [pool.apply_async(mc_batch, (qplex_pts, batch)) for batch in batches]
     hits = sum([f.get() for f in future_res])
     pool.close()
     return vol_simplex(d)*hits/n_mc_pts
+
+def mc_qplex_vol_error_bars(Q, n_mc_pts=100000, batch_size=5000, N=1000):
+    V = [mc_qplex_vol(Q, n_mc_pts=n_mc_pts, batch_size=batch_size) for n in range(N)]
+    return (np.mean(V), np.std(V))
 
 ####################################################################################################
 
@@ -117,3 +128,22 @@ def cvx_qplex_vol(qplex_pts):
     O = (np.sqrt(np.diag(D[:k])) @ V[:k]).T
     P = sum([np.outer(O[i], I[i]) for i in range(n)])
     return ConvexHull(np.einsum('...ij,...j', P, qplex_pts)).volume
+
+####################################################################################################
+
+def tconstraint(d, t):
+    return hyp2f1(1, -t, d, -1)/(d*(d+1))**t
+
+def tcompare(Q, t):
+    return (tconstraint(int(np.sqrt(Q.shape[1])), t), np.sum((Q @ Q.T)**t, axis=0)/len(Q))
+
+####################################################################################################
+
+def consistent(Q):
+    d = int(np.sqrt(Q.shape[1]))
+    L = (1/(d*(d+1)))
+    U = (2/(d*(d+1)))
+    I = Q @ Q.T
+    return np.all(I >= L-1e-16) and np.all(I <= U+1e-16) and \
+           np.allclose(np.sum(Q, axis=1), np.ones(Q.shape[0])) and \
+           np.all(Q >= 0) and np.all(Q <=1)
