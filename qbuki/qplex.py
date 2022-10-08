@@ -69,32 +69,6 @@ def sample_qplex_from_surface_points(d, qplex_pts=None, n_qplex_pts=10000):
             qplex_pts = np.vstack([qplex_pts, pt])
     return qplex_pts
 
-def qplex_moment_error(d, qplex_pts, moment_cutoff=10):
-    n = qplex_pts.shape[0]
-    empirical = np.array([np.sum(qplex_pts**m, axis=0)/n for m in range(1, moment_cutoff+1)])
-    analytic = np.array([np.ones(d**2)/(d**m * sc.special.binom(m+d-1, d-1)) for m in range(1, moment_cutoff+1)])
-    return np.linalg.norm(empirical - analytic)**2
-
-def sample_centered_qplex_from_surface_points(d, qplex_pts=None, n_qplex_pts=10000, n_potentials=50):
-    if type(qplex_pts) == type(None):
-        qplex_pts = np.array([[1/d if i == j else  1/(d*(d+1))\
-                                for j in range(d**2)]\
-                                    for i in range(d**2)])
-        if n_qplex_pts == d**2:
-            return qplex_pts     
-    constraint, constraint_jac = __make_surface_constraint__(d)
-    C = np.ones(d**2)/d**2                       
-    while len(qplex_pts) < n_qplex_pts:
-        potentials = []
-        while len(potentials) < n_potentials:
-            pt = sample_qplex_surface_point(d, constraint=constraint, constraint_jac=constraint_jac)
-            inner_products = qplex_pts @ pt
-            if np.all(inner_products >= 1/(d*(d+1))):
-                potentials.append(pt)
-        potential_centeredness = [qplex_moment_error(d, np.vstack([qplex_pts, potential])) for potential in potentials]
-        qplex_pts = np.vstack([qplex_pts, potentials[np.argmin(potential_centeredness)]])
-    return qplex_pts
-
 ####################################################################################################
 
 def sample_hilbert_qplex(d, n_qplex_pts=10000):
@@ -129,6 +103,7 @@ def mc_qplex_vol(qplex_pts, n_mc_pts=50000, batch_size=5000):
     pool = mp.Pool(mp.cpu_count())
     future_res = [pool.apply_async(mc_batch, (qplex_pts, batch)) for batch in batches]
     hits = sum([f.get() for f in future_res])
+    pool.close()
     return vol_simplex(d)*hits/n_mc_pts
 
 ####################################################################################################

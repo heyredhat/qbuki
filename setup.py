@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name = "qbuki",
-    version = "0.1.0",
+    version = "0.1.1",
     author = "Matthew Weiss",
     author_email = "heyredhat@gmail.com",
     description = "QBism for Python",
