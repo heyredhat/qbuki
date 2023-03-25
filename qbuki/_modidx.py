@@ -5,4 +5,8 @@ d = { 'settings': { 'branch': 'master',
                 'doc_host': 'https://heyredhat.github.io',
                 'git_url': 'https://github.com/heyredhat/qbuki',
                 'lib_path': 'qbuki'},
-  'syms': {'qbuki.core': {'qbuki.core.foo': ('core.html#foo', 'qbuki/core.py')}}}
+  'syms': { 'qbuki.core': { 'qbuki.core.HelloSayer': ('core.html#hellosayer', 'qbuki/core.py'),
+                            'qbuki.core.HelloSayer.__init__': ('core.html#hellosayer.__init__', 'qbuki/core.py'),
+                            'qbuki.core.HelloSayer.say': ('core.html#hellosayer.say', 'qbuki/core.py'),
+                            'qbuki.core.foo': ('core.html#foo', 'qbuki/core.py'),
+                            'qbuki.core.say_hello': ('core.html#say_hello', 'qbuki/core.py')}}}
