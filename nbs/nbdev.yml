@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "qbuki"
+  site-url: "https://heyredhat.github.io/qbuki"
+  description: "QBism for Python"
+  repo-branch: master
+  repo-url: "https://github.com/heyredhat/qbuki"
