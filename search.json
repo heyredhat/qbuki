@@ -1,0 +1,16 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "qbuki",
+    "section": "",
+    "text": "pip install qbuki"
+  },
+  {
+    "objectID": "random.html",
+    "href": "random.html",
+    "title": "random",
+    "section": "",
+    "text": "The autoreload extension is already loaded. To reload it, use:\n  %reload_ext autoreload"
+  }
+]
