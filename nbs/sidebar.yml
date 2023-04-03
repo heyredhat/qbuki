@@ -2,6 +2,7 @@ website:
   sidebar:
     contents:
       - index.ipynb
+      - SimplexEmbedding.ipynb
       - factorize.ipynb
       - gpt.ipynb
       - grassmannian.ipynb

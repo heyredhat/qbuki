@@ -5,9 +5,7 @@ __all__ = ['quick_plot_3d_pts', 'hilbert_to_gpt', 'example1_gpt', 'example2_gpt'
            'rand_quantum_gpt', 'sic_gpt', 'mub_gpt', 'polygonal_states', 'dualize_states', 'polygonal_gpt', 'tinyfier',
            'bloch_transform', 'interior_point', 'dualize_effects', 'simplicial_embedding']
 
-# %% ../nbs/SimplexEmbedding.ipynb 7
-import matplotlib.pyplot as plt
-
+# %% ../nbs/SimplexEmbedding.ipynb 9
 def quick_plot_3d_pts(*P):
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -17,9 +15,7 @@ def quick_plot_3d_pts(*P):
     ax.scatter(0,0,0,c="black")
     plt.show()
 
-# %% ../nbs/SimplexEmbedding.ipynb 30
-from . import gellmann_basis
-
+# %% ../nbs/SimplexEmbedding.ipynb 33
 # Here we use Gellmann matrices to convert quantum states and effects into Bloch vectors.
 def hilbert_to_gpt(states, effects):
     d = states[0].shape[0]
@@ -31,7 +27,7 @@ def hilbert_to_gpt(states, effects):
                      to_gellmann(np.eye(d), basis).real,\
                      to_gellmann(np.eye(d)/d, basis).real
 
-# %% ../nbs/SimplexEmbedding.ipynb 31
+# %% ../nbs/SimplexEmbedding.ipynb 34
 def example1_gpt():
     Zup, Zdown = np.array([1,0]), np.array([0,1])
     Xup, Xdown = np.array([1,1])/np.sqrt(2), np.array([1,-1])/np.sqrt(2)
@@ -39,7 +35,7 @@ def example1_gpt():
     e = [_/2 for _ in s]
     return hilbert_to_gpt(s, e)
 
-# %% ../nbs/SimplexEmbedding.ipynb 32
+# %% ../nbs/SimplexEmbedding.ipynb 35
 def example2_gpt():
     return np.array([[1,0,0,0],\
                      [0,1,0,0],\
@@ -52,7 +48,7 @@ def example2_gpt():
            np.array([1,1,1,1]),\
            np.mean(S, axis=1)
 
-# %% ../nbs/SimplexEmbedding.ipynb 33
+# %% ../nbs/SimplexEmbedding.ipynb 36
 def boxworld_gpt():
     return np.array([[1,1,0],\
                      [1,0,1],\
@@ -65,28 +61,20 @@ def boxworld_gpt():
            np.array([1,0,0]),\
            np.array([1,0,0])
 
-# %% ../nbs/SimplexEmbedding.ipynb 34
-from . import rand_stochastic 
-
+# %% ../nbs/SimplexEmbedding.ipynb 37
 def rand_classical_gpt(n, r):
     E,S = rand_stochastic(n, r), rand_stochastic(r, n)
     return S, E, np.ones(r), np.ones(r)/r
 
-# %% ../nbs/SimplexEmbedding.ipynb 35
-from . import rand_povm, rand_dm
-
+# %% ../nbs/SimplexEmbedding.ipynb 38
 def rand_quantum_gpt(d, n):
     return hilbert_to_gpt([rand_dm(d) for i in range(n)], rand_povm(d,n))
 
-# %% ../nbs/SimplexEmbedding.ipynb 36
-from . import sic_povm
-
+# %% ../nbs/SimplexEmbedding.ipynb 39
 def sic_gpt(d):
     return hilbert_to_gpt([e/e.trace() for e in sic_povm(d)], sic_povm(d))
 
-# %% ../nbs/SimplexEmbedding.ipynb 37
-from . import prime_mubs
-
+# %% ../nbs/SimplexEmbedding.ipynb 40
 def mub_gpt(d):
     mubs = prime_mubs(d)
     mub_vecs = [v for mub in mubs for v in mub]
@@ -94,7 +82,7 @@ def mub_gpt(d):
     E = [s/len(mubs) for s in S]
     return hilbert_to_gpt(S, E)
 
-# %% ../nbs/SimplexEmbedding.ipynb 38
+# %% ../nbs/SimplexEmbedding.ipynb 41
 def polygonal_states(n):
     w = np.exp(2*np.pi*1j/n)
     return np.array([[1, (w**i).real, (w**i).imag] for i in range(n)]).T
@@ -119,13 +107,13 @@ def polygonal_gpt(n):
     E = e/np.sum(e, axis=0)[0]
     return S, E, np.eye(3)[0], np.eye(3)[0]
 
-# %% ../nbs/SimplexEmbedding.ipynb 44
+# %% ../nbs/SimplexEmbedding.ipynb 47
 def tinyfier(X):
     U, D, V = np.linalg.svd(X)
     r = np.isclose(D, 0).argmax(axis=0)
     return U[:,:r if r != 0 else D.shape[0]].T
 
-# %% ../nbs/SimplexEmbedding.ipynb 49
+# %% ../nbs/SimplexEmbedding.ipynb 52
 def bloch_transform(I, S):
     Iproj = np.outer(I,I)/(I@I)
     notIproj = np.eye(I.shape[0]) - Iproj
@@ -133,7 +121,7 @@ def bloch_transform(I, S):
     r = np.isclose(D, 0).argmax(axis=0)
     return np.vstack([I, (U[:,:r if r != 0 else D.shape[0]].T) @ notIproj])
 
-# %% ../nbs/SimplexEmbedding.ipynb 62
+# %% ../nbs/SimplexEmbedding.ipynb 65
 def dualize_states(S, backend="qhull"):
     if backend == "qhull":
         if S.shape[0] == 2:
@@ -147,7 +135,7 @@ def dualize_states(S, backend="qhull"):
         C.rep_type = cdd.RepType.GENERATOR
         return np.array(cdd.Polyhedron(C).get_inequalities())
 
-# %% ../nbs/SimplexEmbedding.ipynb 68
+# %% ../nbs/SimplexEmbedding.ipynb 71
 def interior_point(halfspaces):
     #https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.HalfspaceIntersection.html
     norm_vector = np.reshape(np.linalg.norm(halfspaces[:, :-1], axis=1), (halfspaces.shape[0], 1))
@@ -174,7 +162,7 @@ def dualize_effects(E, backend="qhull"):
         C.rep_type = cdd.RepType.INEQUALITY
         return np.array(cdd.Polyhedron(C).get_generators()).T
 
-# %% ../nbs/SimplexEmbedding.ipynb 79
+# %% ../nbs/SimplexEmbedding.ipynb 82
 def simplicial_embedding(S, E, IA, MA):
     p_, Phi_ = cp.Variable(nonneg=True),\
                cp.Variable(shape=(S.shape[1], E.shape[0]), nonneg=True)
