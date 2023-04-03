@@ -2,4 +2,15 @@ website:
   sidebar:
     contents:
       - index.ipynb
-      - 00_core.ipynb
+      - factorize.ipynb
+      - gpt.ipynb
+      - grassmannian.ipynb
+      - povm_utils.ipynb
+      - qplex.ipynb
+      - quantumness.ipynb
+      - random.ipynb
+      - rics.ipynb
+      - sics.ipynb
+      - spin.ipynb
+      - utils.ipynb
+      - weyl_heisenberg.ipynb

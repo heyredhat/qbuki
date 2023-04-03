@@ -1,0 +1,10 @@
+nbdev_export: create python modules
+pip install -e '.[dev]': install package locally
+
+nbdev_preview: preview docs
+nbdev_test: run tests
+nbdev_prepare: before committing
+
+git add . 
+git commit -m "msg"
+git push
