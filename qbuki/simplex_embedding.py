@@ -4,7 +4,7 @@
 __all__ = ['quick_plot_3d_pts', 'hilbert_to_gpt', 'example1_gpt', 'example2_gpt', 'boxworld_gpt', 'rand_classical_gpt',
            'rand_quantum_gpt', 'sic_gpt', 'mub_gpt', 'polygonal_states', 'dualize_states', 'polygonal_gpt', 'tinyfier',
            'bloch_transform', 'plot_halfspaces', 'interior_point', 'dualize_effects', 'simplicial_embedding',
-           'simplex_embedding', 'quick_simplex_embedding']
+           'simplex_embedding', 'first_pass_simplex_embedding']
 
 # %% ../nbs/SimplexEmbedding.ipynb 9
 def quick_plot_3d_pts(*P):
@@ -226,7 +226,7 @@ def simplex_embedding(S, E, I, M, backend="cdd"):
     return p, PE, PS
 
 # %% ../nbs/SimplexEmbedding.ipynb 94
-def quick_simplex_embedding(S, E, I, M):
+def first_pass_simplex_embedding(S, E, I, M):
     p_, Phi_ = cp.Variable(nonneg=True),\
                cp.Variable(shape=(S.shape[1], E.shape[0]), nonneg=True)
     problem = cp.Problem(cp.Minimize(p_),\
